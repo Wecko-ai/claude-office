@@ -1,6 +1,6 @@
 ---
 name: office
-description: Activate Office mode — the session model becomes the boss and delegates execution to a multi-model agent roster (qwen3.8, deepseek-v4-pro, glm-5.2, kimi-for-coding, qwen3.6-flash) spawned via the bundled office-agent script. Invoke /office to activate, /office off to deactivate. For building apps in parallel with cross-model-family review.
+description: Activate Office mode — the session model becomes the boss and delegates execution to a multi-model agent roster (qwen3.8, deepseek-v4-flash-0731, glm-5.2, kimi-for-coding, qwen3.6-flash) spawned via the bundled office-agent script. Invoke /office to activate, /office off to deactivate. For building apps in parallel with cross-model-family review.
 ---
 
 # Office mode
@@ -14,7 +14,7 @@ executes. This overrides classic Agent-tool delegation for app-building work.
 
 - `claude` CLI on PATH (agents are headless `claude -p` processes).
 - Qwen Token Plan key in `~/.qwen/.env` + LiteLLM proxy on 127.0.0.1:10101 serving the
-  roster models (aliases: qwen3.8-max-preview, deepseek-v4-pro, glm-5.2, qwen3.6-flash)
+  roster models (aliases: qwen3.8-max-preview, deepseek-v4-flash-0731, glm-5.2, qwen3.6-flash)
   with `LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true`.
 - Optional: Kimi coding key in `~/.config/kimi/api_key` for `k2`.
 - If a backend is missing, skip its agents and say so.
@@ -42,7 +42,7 @@ office-agent spawn.
 |---|---|---|---|---|---|
 | boss | — | — | you (session) | — | judgment, planning, synthesis, final review |
 | `lead` | Tanaka | `tnk` | qwen3.8-max-preview | Qwen Token Plan | main executor: features, multi-file edits |
-| `ds` | Suzuki | `suz` | deepseek-v4-pro | Qwen Token Plan | executor B + adversarial reviewer (no thinking) |
+| `ds` | Suzuki | `suz` | deepseek-v4-flash-0731 | Qwen Token Plan | executor B + adversarial reviewer (no thinking) |
 | `glm` | Kenji | `ken` | glm-5.2 | Qwen Token Plan | executor C + second reviewer (no thinking) |
 | `k2` | Yuki | `yuk` | kimi-for-coding | Kimi plan | fallback executor when the Qwen pool throttles |
 | `flash` | Hayate | `hay` | qwen3.6-flash | Qwen Token Plan | mechanical: bulk transforms, inventories, checks |

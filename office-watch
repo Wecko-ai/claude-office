@@ -17,7 +17,7 @@ import json, os, sys, time, glob, subprocess, signal
 ACTIVE_DIR = os.path.expanduser("~/.claude/office-logs/active")
 ROSTER = [  # (key, code, name, model-short)
     ("lead",  "tnk", "Tanaka", "qwen3.8-max"),
-    ("ds",    "suz", "Suzuki", "deepseek-v4"),
+    ("ds",    "suz", "Suzuki", "ds-v4-flash"),
     ("glm",   "ken", "Kenji",  "glm-5.2"),
     ("k2",    "yuk", "Yuki",   "kimi-coding"),
     ("flash", "hay", "Hayate", "qwen3.6-flash"),

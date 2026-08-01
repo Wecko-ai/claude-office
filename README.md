@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | boss | — | — | you (session model) | judgment, planning, synthesis, final review |
 | `lead` | Tanaka | `tnk` | qwen3.8-max-preview | main executor: features, multi-file edits |
-| `ds` | Suzuki | `suz` | deepseek-v4-pro | executor B + adversarial reviewer |
+| `ds` | Suzuki | `suz` | deepseek-v4-flash-0731 | executor B + adversarial reviewer |
 | `glm` | Kenji | `ken` | glm-5.2 | executor C + second reviewer |
 | `k2` | Yuki | `yuk` | kimi-for-coding | fallback executor (separate credit pool) |
 | `flash` | Hayate | `hay` | qwen3.6-flash | mechanical bulk work |
@@ -27,7 +27,7 @@ When active, the session model spawns roster agents via the bundled `office-agen
 ## Requirements
 
 - `claude` CLI on PATH (agents are headless `claude -p` processes).
-- Qwen Token Plan key in `~/.qwen/.env` + LiteLLM proxy on `127.0.0.1:10101` serving the roster models (`qwen3.8-max-preview`, `deepseek-v4-pro`, `glm-5.2`, `qwen3.6-flash`) with `LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true`.
+- Qwen Token Plan key in `~/.qwen/.env` + LiteLLM proxy on `127.0.0.1:10101` serving the roster models (`qwen3.8-max-preview`, `deepseek-v4-flash-0731`, `glm-5.2`, `qwen3.6-flash`) with `LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true`.
 - Optional: Kimi coding key in `~/.config/kimi/api_key` for `k2`.
 - If a backend is missing, its agents are skipped and the boss says so.
 
