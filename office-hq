@@ -19,6 +19,11 @@ LOG_DIR = os.path.expanduser("~/.claude/office-logs")
 ACTIVE_DIR = os.path.join(LOG_DIR, "active")
 RUNS = os.path.join(LOG_DIR, "runs.jsonl")
 PIDFILE = os.path.join(LOG_DIR, "office-hq.pid")
+_ASSET_CANDIDATES = [
+    os.path.expanduser("~/.claude/office-hq-assets"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hq"),
+]
+ASSETS_DIR = next((d for d in _ASSET_CANDIDATES if os.path.isdir(d)), _ASSET_CANDIDATES[0])
 
 ROSTER = [
     ("lead",  "tnk", "Tanaka", "qwen3.8-max-preview"),
@@ -73,10 +78,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>OFFICE HQ</tit
 :root{--bg:#15110c;--cream:#e3cf9c;--tan:#9c7b50;--dim:#6b5d45;--mag:#c586b6;--cyan:#7fb8c9;--ok:#8aa86b;--err:#c96a5a}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--cream);font:13px/1.5 "SF Mono",Menlo,monospace;padding:22px;display:flex;flex-direction:column;align-items:center}
-.wrap{width:100%;max-width:960px}
+.wrap{width:100%;max-width:980px}
 h1{font-size:15px;letter-spacing:5px;color:var(--cream);margin-bottom:2px}
 .sub{color:var(--dim);font-size:11px;margin-bottom:14px}
-canvas{width:100%;image-rendering:pixelated;border:2px solid #2a2118;border-radius:3px;display:block}
+canvas{width:100%;image-rendering:pixelated;border:2px solid #2a2118;border-radius:3px;display:block;background:#0f0c08}
 .list{margin-top:14px}
 .row{display:flex;gap:8px;align-items:baseline;padding:3px 2px;font-size:12.5px;white-space:nowrap;overflow:hidden}
 .row .code{color:var(--mag);font-weight:700;min-width:30px}
@@ -92,89 +97,117 @@ h2{font-size:11px;letter-spacing:3px;color:var(--tan);margin:22px 0 8px}
 .run .a{color:var(--mag);min-width:40px}.run .p{color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 </style></head><body><div class="wrap">
 <h1>OFFICE HQ</h1><div class="sub" id="sub">…</div>
-<canvas id="cv" width="360" height="204"></canvas>
+<canvas id="cv" width="2048" height="1650"></canvas>
 <div class="list" id="list"></div>
 <h2>RECENT RUNS</h2><div id="runs"></div>
 </div>
 <script>
-// ---- palette (sepia, matches the cover art) ----
-const P={out:"#241c12",wall:"#d9c48f",wallSh:"#c9b47e",base:"#2a2118",
-fA:"#9c7b50",fAl:"#7d6240",fB:"#8a6c46",fBl:"#6e5638",
-desk:"#e3cf9c",deskSh:"#c9b483",crt:"#cdb682",crtD:"#a08a5e",glow:"#f7ecc4",glow2:"#efe0ae",
-skin:"#d8b98a",hair:"#4a3a26",hair2:"#6b5232",shirtA:"#7d6b3f",shirtB:"#8a6c46",shirtC:"#6b5d45",
-chair:"#33291c",suit:"#2e2418",cup:"#e3cf9c",steam:"#efe0ae",scrDark:"#3a3226",poster:"#4a3a26"};
 const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 ctx.imageSmoothingEnabled=false;
-function rr(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
-// desk slots: roster order, positions on the floor
-const SLOTS=[{k:"lead",x:64,y:44},{k:"ds",x:160,y:44},{k:"glm",x:64,y:124},{k:"k2",x:160,y:124},{k:"flash",x:256,y:124}];
+const IMGS={};
+for(const n of ["room","spr_typing","spr_sleep","spr_typing_b","spr_coffee","spr_boss"]){
+  const i=new Image();i.src="/assets/"+n+".png";IMGS[n]=i;
+}
+// slots: worker anchor = (cx = sprite center x, fy = sprite bottom y)
+const SLOTS=[
+ {k:"lead", cx:290, fy:868,  flip:false, typ:"spr_typing",  slp:"spr_sleep"},
+ {k:"ds",   cx:640, fy:868,  flip:true,  typ:"spr_typing_b",slp:"spr_sleep"},
+ {k:"glm",  cx:290, fy:1580, flip:false, typ:"spr_typing_b",slp:"spr_sleep"},
+ {k:"k2",   cx:640, fy:1580, flip:true,  typ:"spr_typing",  slp:"spr_sleep"},
+ {k:"flash",cx:1445,fy:1580, flip:false, typ:"spr_typing",  slp:"spr_sleep"}
+];
+// screen rects [x,y,w,h] are re-measured below; scr coords set after first render pass
+const SCREENS={lead:[196,310,270,200],ds:[900,310,270,200],glm:[212,1190,265,195],k2:[1035,1190,265,195],flash:[2000,0,0,0]};
+const COFFEE={x:1810,fy:700};      // standing spot in front of the machine
+const BOSS={y:1120,x0:420,x1:1560};
 const CODES={lead:"tnk",ds:"suz",glm:"ken",k2:"yuk",flash:"hay"};
 const NAMES={lead:"Tanaka",ds:"Suzuki",glm:"Kenji",k2:"Yuki",flash:"Hayate"};
-const SHIRTS={lead:P.shirtA,ds:P.shirtB,glm:P.shirtC,k2:P.shirtA,flash:P.shirtB};
-const HAIRS={lead:P.hair,ds:P.hair2,glm:P.hair,k2:P.hair2,flash:P.hair};
-let state={agents:[],recent:[],now:0},drift=0,frame=0,bossX=200,bossDir=1;
-function scene(){
-  rr(0,0,360,204,P.out);
-  // wall
-  rr(0,0,360,28,P.wall);rr(0,22,360,6,P.wallSh);rr(0,28,360,3,P.base);
-  // posters
-  rr(38,5,26,15,P.poster);rr(40,7,22,11,P.hair2);rr(138,5,20,15,P.poster);rr(140,7,16,11,P.hair2);
-  // floor herringbone
-  for(let ty=0;ty<15;ty++)for(let tx=0;tx<30;tx++){
-    const x=tx*12,y=31+ty*12,v=(tx+ty)%2==0;
-    rr(x,y,12,12,v?P.fA:P.fB);
-    if(v){for(let i=2;i<12;i+=4)rr(x+i,y,1,12,P.fAl)}
-    else{for(let i=2;i<12;i+=4)rr(x,y+i,12,1,P.fBl)}
-  }
-  // coffee machine (top right)
-  rr(300,4,44,44,P.out);rr(302,6,40,40,P.crtD);rr(304,8,26,36,P.crt);
-  rr(332,8,8,36,P.out);for(let i=0;i<4;i++)rr(333,10+i*8,6,4,P.crtD);
-  rr(308,26,18,14,P.out);rr(313,30,8,7,P.cup);rr(314,28,6,2,P.cup);
-  const busy=state.agents.length>0;
-  if(busy){const f=frame%4;rr(316,20-f*3,2,2,P.steam);rr(319,16-((frame+2)%4)*3,2,2,P.steam)}
-}
-function desk(cx,y,a,key){
-  const on=!!a;
-  // CRT (back view)
-  const crtc=on?P.crt:P.crtD;
-  rr(cx-14,y,28,17,P.out);rr(cx-13,y+1,26,15,crtc);
-  rr(cx-11,y+3,22,2,on?P.glow2:P.crtD);for(let i=0;i<3;i++)rr(cx-9+i*7,y+7,4,1,P.out);
-  if(on){const g=(frame%2==0)?P.glow:P.glow2;
-    rr(cx-14,y-1,28,1,g);rr(cx-15,y,1,16,g);rr(cx+14,y,1,16,g)}
-  // desk slab
-  rr(cx-26,y+17,52,11,P.out);rr(cx-25,y+18,50,9,P.desk);rr(cx-25,y+25,50,2,P.deskSh);
-  rr(cx+15,y+19,8,6,P.deskSh); // papers
-  if(on){
-    // keyboard + hands
-    rr(cx-8,y+22,16,3,P.out);const off=(frame%2==0)?0:1;
-    rr(cx-10,y+22+off,3,2,P.skin);rr(cx+7,y+23-off,3,2,P.skin);
-    // worker: head over slab bottom, torso, chair
-    rr(cx-11,y+27,22,10,P.out);rr(cx-10,y+28,20,8,SHIRTS[key]);
-    rr(cx-6,y+19,12,11,P.out);rr(cx-5,y+20,10,9,P.skin);rr(cx-5,y+20,10,4,HAIRS[key]);
-    rr(cx-8,y+36,16,7,P.out);rr(cx-7,y+37,14,5,P.chair);
-    // speech bubble with typing dots
-    const dots=frame%3+1;
-    rr(cx+18,y-9,20,11,P.out);rr(cx+19,y-8,18,9,P.cream);rr(cx+18,y+2,3,3,P.cream);
-    for(let i=0;i<dots;i++)rr(cx+22+i*5,y-5,2,2,P.out);
-  }else{
-    // empty chair
-    rr(cx-8,y+30,16,8,P.out);rr(cx-7,y+31,14,6,P.chair);
-  }
-}
-function boss(){
-  if(state.agents.length==0)return;
-  bossX+=bossDir*1;if(bossX>290)bossDir=-1;if(bossX<46)bossDir=1;
-  const x=Math.round(bossX),y=88;
-  rr(x-4,y,8,20,P.out);
-  rr(x-3,y+1,6,5,P.skin);rr(x-3,y+1,6,2,P.hair);
-  rr(x-4,y+6,8,9,P.suit);rr(x-1,y+6,2,4,P.cream);
-  const st=(frame%2==0)?1:0;
-  rr(x-3,y+15,3,4+st,P.suit);rr(x+1,y+15,3,5-st,P.suit);
-}
+let state={agents:[],recent:[],now:0},drift=0,frame=0;
+let bossX=800,bossDir=1;
+// per-slot coffee-break machine: {phase:null|"go"|"drink"|"back", t, x}
+const breaks={};
+function rand(a,b){return a+Math.random()*(b-a)}
+function active(k){return state.agents.some(a=>a.agent==k)}
 function draw(){
-  scene();
-  for(const s of SLOTS){const a=state.agents.find(x=>x.agent==s.k);desk(s.x,s.y,a,s.k)}
-  boss();
+  if(!IMGS.room.complete||IMGS.room.naturalWidth==0)return;
+  ctx.clearRect(0,0,2048,1650);
+  ctx.drawImage(IMGS.room,0,0);
+  const anyOn=state.agents.length>0;
+  // steam over the coffee machine cup (machine ~x1730-2020, cup ~y400)
+  if(anyOn){const f=frame%4;
+    px(1836,430-f*26,14,"#efe0ae");px(1876,400-((frame+2)%4)*26,12,"#e3cf9c");}
+  for(const s of SLOTS){
+    const on=active(s.k);
+    const br=breaks[s.k];
+    if(on&&!br&&Math.random()<0.0012)breaks[s.k]={phase:"go",t:frame};
+    if(br)stepBreak(s,br);
+    if(on&&(!br||br.phase==null)){
+      const dy=(frame%2)*5;
+      const im=pick(s.typ);
+      blit(im,s.cx,s.fy+dy,s.flip);
+      bubble(s.cx,s.fy-im.height);
+    }else if(!on){
+      const dy=(frame%4<2)?0:4;
+      const im=pick(s.slp);
+      blit(im,s.cx,s.fy+dy,s.flip);
+      zzz(s.cx+(s.flip?-58:22),s.fy-im.height-4);
+    }
+  }
+  // boss paces while the office works
+  if(anyOn){
+    bossX+=bossDir*7;if(bossX>BOSS.x1)bossDir=-1;if(bossX<BOSS.x0)bossDir=1;
+    const im=IMGS.spr_boss,bob=(frame%2)*5;
+    ctx.save();
+    if(bossDir<0){ctx.translate(bossX+im.width/2,0);ctx.scale(-1,1);ctx.translate(-(bossX+im.width/2),0)}
+    ctx.drawImage(im,bossX-im.width/2,BOSS.y-im.height+bob);
+    ctx.restore();
+  }
+}
+function stepBreak(s,br){
+  const im=IMGS.spr_coffee,el=frame-br.t;
+  if(br.phase=="go"){
+    const p=Math.min(1,el/14);
+    const x=s.cx+(COFFEE.x-s.cx)*p, y=s.fy+(COFFEE.fy-s.fy)*p;
+    ctx.drawImage(im,x-im.width/2,y-im.height+(frame%2)*5);
+    if(p>=1){br.phase="drink";br.t=frame}
+  }else if(br.phase=="drink"){
+    ctx.drawImage(im,COFFEE.x-im.width/2,COFFEE.fy-im.height);
+    const f=frame%3;px(COFFEE.x+40,COFFEE.fy-im.height-14-f*16,10,"#efe0ae");
+    if(el>26){br.phase="back";br.t=frame}
+  }else if(br.phase=="back"){
+    const p=Math.min(1,el/14);
+    const x=COFFEE.x+(s.cx-COFFEE.x)*p, y=COFFEE.fy+(s.fy-COFFEE.fy)*p;
+    ctx.save();
+    ctx.translate(x,0);ctx.scale(-1,1);ctx.translate(-x,0);
+    ctx.drawImage(im,x-im.width/2,y-im.height+(frame%2)*5);
+    ctx.restore();
+    if(p>=1)delete breaks[s.k];
+  }
+}
+function pick(n){const i=IMGS[n];return (i&&i.complete&&i.naturalWidth>0)?i:IMGS.spr_typing}
+function blit(im,cx,fy,flip){
+  if(!im.complete||im.naturalWidth==0)return;
+  ctx.save();
+  if(flip){ctx.translate(cx,0);ctx.scale(-1,1);ctx.translate(-cx,0)}
+  ctx.drawImage(im,cx-im.width/2,fy-im.height);
+  ctx.restore();
+}
+function px(x,y,sz,c){ctx.fillStyle=c;ctx.fillRect(x,y,sz,sz)}
+function dark(r){if(!r)return;ctx.fillStyle="rgba(20,14,8,0.55)";ctx.fillRect(r[0],r[1],r[2],r[3])}
+function bubble(cx,headTop){
+  const w=68,h=36,x=cx-w/2,y=headTop-h-26;
+  ctx.fillStyle="#241c12";ctx.fillRect(x-4,y-4,w+8,h+8);
+  ctx.fillStyle="#e3cf9c";ctx.fillRect(x,y,w,h);
+  ctx.fillStyle="#241c12";ctx.fillRect(cx-8,y+h+4,16,8);
+  ctx.fillStyle="#e3cf9c";ctx.fillRect(cx-5,y+h,10,8);
+  const dots=frame%3+1;ctx.fillStyle="#241c12";
+  for(let i=0;i<dots;i++)ctx.fillRect(x+12+i*18,y+14,9,9);
+}
+function zzz(x,y){
+  ctx.fillStyle="#e3cf9c";ctx.font="900 38px Menlo,monospace";
+  const ph=frame%3;
+  ctx.fillText("z",x+ph*10,y-ph*26);
+  if(ph>0)ctx.fillText("Z",x+34+ph*8,y-40-ph*20);
 }
 function fmt(e){if(e<60)return e+"s";if(e<3600)return Math.floor(e/60)+"m"+String(e%60).padStart(2,"0")+"s";
 return Math.floor(e/3600)+"h"+String(Math.floor(e%3600/60)).padStart(2,"0")+"m"}
@@ -208,19 +241,37 @@ function list(){
 }
 async function poll(){try{const r=await fetch("/api/state");state=await r.json();
   drift=Math.floor(Date.now()/1000)-state.now;}catch(e){}list()}
-setInterval(()=>{frame++;draw()},400);
+setInterval(()=>{frame++;draw()},420);
 setInterval(list,1000);
-poll();setInterval(poll,1500);draw();
+poll();setInterval(poll,1500);
 </script></body></html>"""
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
+    def do_POST(self):
+        if self.path == "/snap":
+            ln = int(self.headers.get("Content-Length", 0))
+            data = self.rfile.read(ln).decode()
+            if data.startswith("data:image/png;base64,"):
+                import base64
+                png = base64.b64decode(data.split(",", 1)[1])
+                open(os.path.join(ASSETS_DIR, "snapshot.png"), "wb").write(png)
+            self.send_response(200); self.send_header("Content-Length","2"); self.end_headers(); self.wfile.write(b"ok")
+        else:
+            self.send_response(404); self.end_headers()
     def do_GET(self):
         if self.path.startswith("/api/state"):
             body = json.dumps(state()).encode()
             ct = "application/json"
         elif self.path == "/health":
             body, ct = b"ok", "text/plain"
+        elif self.path.startswith("/assets/"):
+            name = os.path.basename(self.path)
+            fp = os.path.join(ASSETS_DIR, name)
+            if os.path.isfile(fp) and name.endswith(".png"):
+                body, ct = open(fp, "rb").read(), "image/png"
+            else:
+                self.send_response(404); self.end_headers(); return
         else:
             body, ct = PAGE.encode(), "text/html; charset=utf-8"
         self.send_response(200)

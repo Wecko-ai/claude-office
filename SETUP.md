@@ -25,6 +25,7 @@ git clone https://github.com/Wecko-ai/claude-office.git /tmp/claude-office
 cp -r /tmp/claude-office ~/.claude/skills/office
 cp /tmp/claude-office/office-agent /tmp/claude-office/office-watch /tmp/claude-office/office-hq ~/bin/   # or anywhere on PATH
 chmod +x ~/bin/office-agent ~/bin/office-watch ~/bin/office-hq
+mkdir -p ~/.claude/office-hq-assets && cp /tmp/claude-office/assets/hq/*.png ~/.claude/office-hq-assets/   # office-hq pixel-art scene
 ```
 
 ## 2. Configure the proxy
