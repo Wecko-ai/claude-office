@@ -35,12 +35,15 @@ Agents can be addressed by roster key (`lead`), name (`Tanaka`), or code (`tnk`)
 ## Spawn
 
 ```
-${CLAUDE_PLUGIN_ROOT}/office-agent <agent> "complete self-contained prompt"
-${CLAUDE_PLUGIN_ROOT}/office-agent lead -f /tmp/task-spec.md
-echo "..." | ${CLAUDE_PLUGIN_ROOT}/office-agent ds -
+${CLAUDE_PLUGIN_ROOT}/office-agent <agent> --task "one-phrase summary" "complete self-contained prompt"
+${CLAUDE_PLUGIN_ROOT}/office-agent lead --task "refactor the auth module" -f /tmp/task-spec.md
+echo "..." | ${CLAUDE_PLUGIN_ROOT}/office-agent ds --task "review the diff" -
 ```
 
-- Flags: `--max-turns N` (default 40), `--json`.
+- Flags: `--max-turns N` (default 40), `--task "..."` (one-phrase summary — ALWAYS
+  pass it, it shows in the statusline), `--json`.
+- Statusline: each running agent gets a full line (code, elapsed, task, live action =
+  current tool + target), updated in real time from the agent's stream-json output.
 - Parallelism: several Bash calls with `run_in_background: true`, synthesize when all
   return. Max 5 concurrent.
 - Every run is logged to `~/.claude/office-logs/runs.jsonl`.
