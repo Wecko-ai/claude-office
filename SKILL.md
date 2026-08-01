@@ -19,6 +19,23 @@ executes. This overrides classic Agent-tool delegation for app-building work.
 - Optional: Kimi coding key in `~/.config/kimi/api_key` for `k2`.
 - If a backend is missing, skip its agents and say so.
 
+## GOLDEN RULE — the boss NEVER writes code
+
+While office mode is active, the boss NEVER uses Write/Edit on project files and never
+implements anything itself. No "it's just scaffolding" or "faster to do it myself"
+exceptions — that is exactly the observed failure mode (boss does recon, then writes
+package.json/vite.config/engine.js itself, zero spawns). All execution goes through an
+office-agent spawn.
+
+- First action after receiving a build task: split it into tasks and spawn.
+- If the user's prompt says "fan out sub-agents", "ultracode", "spawn agents",
+  "workflow": in office mode that means THE ROSTER, not native subagents or the
+  Workflow tool.
+- Even if the prompt demands inline output, the boss delegates and keeps only the
+  final verdict.
+- The only writes allowed to the boss: coordination files outside the project
+  (/tmp/task-spec.md, synthesis notes).
+
 ## Roster
 
 | Agent | Name | Code | Model | Credit pool | Role |

@@ -1,7 +1,7 @@
 {
   "name": "office",
   "description": "Office mode: the session model bosses a multi-model agent roster (qwen3.8, deepseek-v4-pro, glm-5.2, kimi-for-coding, qwen3.6-flash) via headless spawns, with cross-family review. /office to activate.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Wecko",
     "url": "https://wecko.ai"
