@@ -1,0 +1,128 @@
+#!/bin/zsh
+# office-agent — spawn a headless Claude Code agent under a non-Anthropic model.
+# Part of /office mode (skill ~/.claude/skills/office). Main loop (boss) stays on the
+# session model; this spawns executors on the Qwen Token Plan (via LiteLLM 10101)
+# or the Kimi coding plan (direct Anthropic-compatible endpoint).
+#
+# Usage:
+#   office-agent <agent|model> "prompt"        roster name or raw model id
+#   office-agent <agent|model> -f prompt.md    prompt from file
+#   echo "prompt" | office-agent <agent|model> -   prompt from stdin
+# Flags: --max-turns N (default 40), --json (output-format json)
+#
+# Roster: lead=Tanaka/tnk=qwen3.8-max-preview  ds=Suzuki/suz=deepseek-v4-pro
+#         glm=Kenji/ken=glm-5.2  k2=Yuki/yuk=kimi-for-coding  flash=Hayate/hay=qwen3.6-flash
+# Logs: ~/.claude/office-logs/runs.jsonl  Liveness: ~/.claude/office-logs/active/*.json
+#
+# Gotcha: the MaaS /v1/responses endpoint only serves qwen models. LiteLLM routes
+# openai-provider requests with thinking enabled to /responses, so glm-5.2 and
+# deepseek-v4-pro must run with thinking OFF (MAX_THINKING_TOKENS=0) to stay on
+# /chat/completions, which serves them fine.
+
+set -u
+
+LOG_DIR="$HOME/.claude/office-logs"
+ACTIVE_DIR="$LOG_DIR/active"
+LOG_FILE="$LOG_DIR/runs.jsonl"
+PLIST="$HOME/Library/LaunchAgents/ai.wecko.litellm-qwen.plist"
+PROXY_HEALTH="http://127.0.0.1:10101/health/liveliness"
+
+typeset -A ROSTER
+ROSTER=(lead qwen3.8-max-preview ds deepseek-v4-pro glm glm-5.2 k2 kimi-for-coding flash qwen3.6-flash)
+
+typeset -A ALIASES
+ALIASES=(tanaka lead tnk lead suzuki ds suz ds kenji glm ken glm yuki k2 yuk k2 hayate flash hay flash)
+
+usage() {
+  echo "usage: office-agent <lead|ds|glm|k2|flash|tanaka|tnk|suzuki|suz|kenji|ken|yuki|yuk|hayate|hay|model-id> [--max-turns N] [--json] \"prompt\" | -f file | -" >&2
+  exit 2
+}
+
+[[ $# -lt 1 ]] && usage
+
+target="$1"; shift
+max_turns=40
+outfmt="text"
+prompt=""
+prompt_file=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --max-turns) max_turns="$2"; shift 2 ;;
+    --json) outfmt="json"; shift ;;
+    -f) prompt_file="$2"; shift 2 ;;
+    -) prompt="$(cat)"; shift ;;
+    *) prompt="$1"; shift ;;
+  esac
+done
+
+if [[ -n "$prompt_file" ]]; then
+  prompt="$(cat -- "$prompt_file")" || { echo "office-agent: cannot read $prompt_file" >&2; exit 2; }
+fi
+[[ -z "$prompt" ]] && usage
+
+# Resolve: lowercase input -> ALIASES -> canonical roster key, then ROSTER -> model id
+target_lower="${(L)target}"
+resolved_key="${ALIASES[$target_lower]:-$target_lower}"
+model="${ROSTER[$resolved_key]:-$resolved_key}"
+# canonical_key is what we store in state/log (the real roster key, not the alias)
+canonical_key="${ALIASES[$target_lower]:-$ROSTER[$target_lower]:+$target_lower}"
+canonical_key="${canonical_key:-$target}"
+
+# Route: kimi models go direct to api.kimi.com/coding, everything else via LiteLLM.
+if [[ "$model" == k3* || "$model" == kimi-* ]]; then
+  key="$(cat ~/.config/kimi/api_key 2>/dev/null)"
+  [[ -z "$key" ]] && { echo "office-agent: missing ~/.config/kimi/api_key" >&2; exit 1; }
+  base_url="https://api.kimi.com/coding"
+  auth_token="$key"
+else
+  if ! curl -sf -o /dev/null -m 3 "$PROXY_HEALTH"; then
+    echo "office-agent: qwen proxy down, starting..." >&2
+    launchctl load "$PLIST" 2>/dev/null
+    for i in $(seq 1 20); do
+      curl -sf -o /dev/null -m 2 "$PROXY_HEALTH" && break
+      sleep 2
+    done
+    curl -sf -o /dev/null -m 3 "$PROXY_HEALTH" || { echo "office-agent: proxy failed to start" >&2; exit 1; }
+  fi
+  base_url="http://127.0.0.1:10101"
+  auth_token="sk-local-qwen"
+fi
+
+mkdir -p "$LOG_DIR" "$ACTIVE_DIR"
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# glm-5.2 / deepseek-v4-pro: no thinking (would be routed to /responses -> upstream rejects)
+think_env=()
+case "$model" in
+  glm-*|deepseek-*) think_env=(MAX_THINKING_TOKENS=0) ;;
+esac
+
+# Compute prompt_head BEFORE the claude call (used in both liveness file and log)
+prompt_head="$(print -r -- "$prompt" | head -c 120 | tr '\n' ' ' | sed 's/"/\\"/g')"
+
+# Write liveness state file so statusline can poll for running agents
+STATE_FILE="$ACTIVE_DIR/${canonical_key}-$$.json"
+printf '{"agent":"%s","model":"%s","pid":%d,"start":%d,"prompt_head":"%s"}\n' \
+  "$canonical_key" "$model" "$$" "$(date +%s)" "$prompt_head" > "$STATE_FILE"
+trap 'rm -f "$STATE_FILE"' EXIT INT TERM
+
+env "${think_env[@]}" \
+ANTHROPIC_BASE_URL="$base_url" \
+ANTHROPIC_AUTH_TOKEN="$auth_token" \
+ANTHROPIC_MODEL="$model" \
+ANTHROPIC_DEFAULT_FABLE_MODEL="$model" \
+ANTHROPIC_DEFAULT_OPUS_MODEL="$model" \
+ANTHROPIC_DEFAULT_SONNET_MODEL="$model" \
+ANTHROPIC_DEFAULT_HAIKU_MODEL="$model" \
+CLAUDE_CODE_SUBAGENT_MODEL="$model" \
+ENABLE_TOOL_SEARCH="true" \
+claude -p --output-format "$outfmt" --dangerously-skip-permissions --max-turns "$max_turns" "$prompt"
+rc=$?
+
+rm -f "$STATE_FILE"
+
+printf '{"ts":"%s","agent":"%s","model":"%s","cwd":"%s","exit":%d,"prompt_head":"%s"}\n' \
+  "$ts" "$canonical_key" "$model" "$PWD" "$rc" "$prompt_head" >> "$LOG_FILE"
+
+exit $rc
