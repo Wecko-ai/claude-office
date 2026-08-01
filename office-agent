@@ -29,7 +29,10 @@ set -u
 LOG_DIR="$HOME/.claude/office-logs"
 ACTIVE_DIR="$LOG_DIR/active"
 LOG_FILE="$LOG_DIR/runs.jsonl"
-PLIST="$HOME/Library/LaunchAgents/ai.wecko.litellm-qwen.plist"
+# launchd unit that owns the proxy (override with OFFICE_LITELLM_PLIST). If the
+# file doesn't exist we don't try to auto-start — see SETUP.md in the repo.
+PLIST="${OFFICE_LITELLM_PLIST:-$HOME/Library/LaunchAgents/ai.wecko.litellm-qwen.plist}"
+[[ -f "$PLIST" ]] || PLIST="$HOME/Library/LaunchAgents/com.office.litellm.plist"
 PROXY_HEALTH="http://127.0.0.1:10101/health/liveliness"
 
 typeset -A ROSTER
@@ -93,13 +96,19 @@ if [[ "$model" == k3* || "$model" == kimi-* ]]; then
   auth_token="$key"
 else
   if ! curl -sf -o /dev/null -m 3 "$PROXY_HEALTH"; then
-    echo "office-agent: qwen proxy down, starting..." >&2
+    if [[ ! -f "$PLIST" ]]; then
+      echo "office-agent: LiteLLM proxy not running on 127.0.0.1:10101 and no launchd unit found." >&2
+      echo "office-agent: start it manually:  litellm --config ~/.config/litellm/office.yaml --port 10101" >&2
+      echo "office-agent: full walkthrough: SETUP.md in https://github.com/Wecko-ai/claude-office" >&2
+      exit 1
+    fi
+    echo "office-agent: proxy down, starting via launchd..." >&2
     launchctl load "$PLIST" 2>/dev/null
     for i in $(seq 1 20); do
       curl -sf -o /dev/null -m 2 "$PROXY_HEALTH" && break
       sleep 2
     done
-    curl -sf -o /dev/null -m 3 "$PROXY_HEALTH" || { echo "office-agent: proxy failed to start" >&2; exit 1; }
+    curl -sf -o /dev/null -m 3 "$PROXY_HEALTH" || { echo "office-agent: proxy failed to start — check its log (see SETUP.md troubleshooting)" >&2; exit 1; }
   fi
   base_url="http://127.0.0.1:10101"
   auth_token="sk-local-qwen"

@@ -24,23 +24,43 @@
 
 When active, the session model spawns roster agents via the bundled `office-agent` script (headless `claude -p` routed through a local LiteLLM proxy or the Kimi endpoint), fans work out in parallel, and runs cross-family review (author != reviewer) before merging.
 
-## Requirements
+## Getting started
 
-- `claude` CLI on PATH (agents are headless `claude -p` processes).
-- Qwen Token Plan key in `~/.qwen/.env` + LiteLLM proxy on `127.0.0.1:10101` serving the roster models (`qwen3.8-max-preview`, `deepseek-v4-flash-0731`, `glm-5.2`, `qwen3.6-flash`) with `LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true`.
-- Optional: Kimi coding key in `~/.config/kimi/api_key` for `k2`.
-- If a backend is missing, its agents are skipped and the boss says so.
+**You don't need this exact roster.** Any OpenAI-compatible provider (Alibaba MaaS,
+DeepSeek, OpenRouter, Together, local Ollama...) works through the bundled LiteLLM
+setup, and the roster is just a table at the top of `office-agent` you edit to match.
 
-Full operational manual: [SKILL.md](SKILL.md).
+Full walkthrough: **[SETUP.md](SETUP.md)** — install, proxy config
+([examples/litellm-office.yaml](examples/litellm-office.yaml)), keeping it alive
+([examples/com.office.litellm.plist](examples/com.office.litellm.plist)), pointing the
+roster at your models, statusline integration
+([examples/statusline-office.sh](examples/statusline-office.sh)) and troubleshooting.
 
-## Install (manual)
+Quick version:
 
 ```bash
 git clone https://github.com/Wecko-ai/claude-office.git /tmp/claude-office
 cp -r /tmp/claude-office ~/.claude/skills/office
+cp /tmp/claude-office/office-agent /tmp/claude-office/office-watch ~/bin/
+# configure the proxy (SETUP.md step 2), then:
+office-agent lead --task "smoke test" "reply with just: pong"
 ```
 
-Then run `/office` in any session.
+Then `/office` in any Claude Code session.
+
+## Live office view
+
+`office-watch` in a split pane renders your agents at their desks — sepia pixel-office
+TUI, one desk per agent, task + live action, screens blinking while they type.
+
+## Requirements
+
+- `claude` CLI on PATH (agents are headless `claude -p` processes) + `jq`, `zsh`, `python3`
+- An API key for at least one OpenAI-compatible provider + `pip install litellm`
+- Optional: Kimi coding key in `~/.config/kimi/api_key` for `k2`
+- If a backend is missing, its agents are skipped and the boss says so
+
+Full operational manual: [SKILL.md](SKILL.md).
 
 ## Install (as plugin)
 
