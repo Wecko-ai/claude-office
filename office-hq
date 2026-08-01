@@ -70,85 +70,147 @@ def state():
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>OFFICE HQ</title>
 <style>
-:root{--bg:#191510;--panel:#221c14;--line:#3a3226;--tan:#a8875a;--cream:#e8d5a3;
---glow:#f5e9c0;--dim:#6b5d45;--mag:#c586b6;--cyan:#7fb8c9;--ok:#8aa86b;--err:#c96a5a}
+:root{--bg:#15110c;--cream:#e3cf9c;--tan:#9c7b50;--dim:#6b5d45;--mag:#c586b6;--cyan:#7fb8c9;--ok:#8aa86b;--err:#c96a5a}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--cream);font:14px/1.5 "SF Mono",Menlo,monospace;padding:24px}
-h1{font-size:16px;letter-spacing:4px;color:var(--glow);margin-bottom:2px}
-.sub{color:var(--dim);font-size:12px;margin-bottom:22px}
-.floor{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-bottom:28px}
-.desk{background:var(--panel);border:2px solid var(--line);border-radius:4px;padding:14px;position:relative;
-image-rendering:pixelated;min-height:150px}
-.desk.on{border-color:var(--tan)}
-.desk .sprite{font-size:15px;line-height:1.15;white-space:pre;color:var(--tan);margin-bottom:8px}
-.desk.on .sprite .scr{color:var(--glow);animation:flick 1.2s steps(2) infinite}
-.desk.off{opacity:.45}
-@keyframes flick{50%{color:var(--cream)}}
-.who{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
-.code{color:var(--mag);font-weight:700}.name{color:var(--dim)}.elapsed{color:var(--cyan);margin-left:auto}
-.task{color:var(--cream);font-size:13px;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act{color:var(--tan);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act:before{content:"› ";color:var(--dim)}
-.model{position:absolute;top:10px;right:12px;color:var(--dim);font-size:10px}
-.sess{color:var(--dim);font-size:11px;margin:16px 0 8px;letter-spacing:1px}
-h2{font-size:12px;letter-spacing:3px;color:var(--tan);margin:26px 0 10px}
-.run{display:flex;gap:10px;padding:6px 10px;border-left:2px solid var(--line);margin-bottom:4px;font-size:12px;color:var(--dim)}
+body{background:var(--bg);color:var(--cream);font:13px/1.5 "SF Mono",Menlo,monospace;padding:22px;display:flex;flex-direction:column;align-items:center}
+.wrap{width:100%;max-width:960px}
+h1{font-size:15px;letter-spacing:5px;color:var(--cream);margin-bottom:2px}
+.sub{color:var(--dim);font-size:11px;margin-bottom:14px}
+canvas{width:100%;image-rendering:pixelated;border:2px solid #2a2118;border-radius:3px;display:block}
+.list{margin-top:14px}
+.row{display:flex;gap:8px;align-items:baseline;padding:3px 2px;font-size:12.5px;white-space:nowrap;overflow:hidden}
+.row .code{color:var(--mag);font-weight:700;min-width:30px}
+.row .t{color:var(--cyan);min-width:56px}
+.row .task{color:var(--cream);overflow:hidden;text-overflow:ellipsis}
+.row .act{color:var(--tan);overflow:hidden;text-overflow:ellipsis}
+.row .act:before{content:" › ";color:var(--dim)}
+.row .sess{color:var(--dim);font-size:10px}
+.row.zz{color:var(--dim)}.row.zz .code{color:var(--dim)}
+h2{font-size:11px;letter-spacing:3px;color:var(--tan);margin:22px 0 8px}
+.run{display:flex;gap:10px;padding:4px 8px;border-left:2px solid #2a2118;margin-bottom:3px;font-size:11.5px;color:var(--dim)}
 .run .ok{color:var(--ok)}.run .err{color:var(--err)}
-.run .a{color:var(--mag);min-width:44px}.run .p{color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.zz{color:var(--dim)}
-</style></head><body>
+.run .a{color:var(--mag);min-width:40px}.run .p{color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+</style></head><body><div class="wrap">
 <h1>OFFICE HQ</h1><div class="sub" id="sub">…</div>
-<div id="floors"></div>
+<canvas id="cv" width="360" height="204"></canvas>
+<div class="list" id="list"></div>
 <h2>RECENT RUNS</h2><div id="runs"></div>
+</div>
 <script>
-const SPR_ON=`┌─<span class="scr">▓▓▓▓</span>─┐\\n│  ◉◉  │\\n└┬─▄▖▄─┬┘`;
-const SPR_OFF=`┌─▒▒▒▒─┐\\n│      │\\n└┬────┬┘`;
-function el(s){return document.createElement(s)}
+// ---- palette (sepia, matches the cover art) ----
+const P={out:"#241c12",wall:"#d9c48f",wallSh:"#c9b47e",base:"#2a2118",
+fA:"#9c7b50",fAl:"#7d6240",fB:"#8a6c46",fBl:"#6e5638",
+desk:"#e3cf9c",deskSh:"#c9b483",crt:"#cdb682",crtD:"#a08a5e",glow:"#f7ecc4",glow2:"#efe0ae",
+skin:"#d8b98a",hair:"#4a3a26",hair2:"#6b5232",shirtA:"#7d6b3f",shirtB:"#8a6c46",shirtC:"#6b5d45",
+chair:"#33291c",suit:"#2e2418",cup:"#e3cf9c",steam:"#efe0ae",scrDark:"#3a3226",poster:"#4a3a26"};
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+ctx.imageSmoothingEnabled=false;
+function rr(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+// desk slots: roster order, positions on the floor
+const SLOTS=[{k:"lead",x:64,y:44},{k:"ds",x:160,y:44},{k:"glm",x:64,y:124},{k:"k2",x:160,y:124},{k:"flash",x:256,y:124}];
+const CODES={lead:"tnk",ds:"suz",glm:"ken",k2:"yuk",flash:"hay"};
+const NAMES={lead:"Tanaka",ds:"Suzuki",glm:"Kenji",k2:"Yuki",flash:"Hayate"};
+const SHIRTS={lead:P.shirtA,ds:P.shirtB,glm:P.shirtC,k2:P.shirtA,flash:P.shirtB};
+const HAIRS={lead:P.hair,ds:P.hair2,glm:P.hair,k2:P.hair2,flash:P.hair};
+let state={agents:[],recent:[],now:0},drift=0,frame=0,bossX=200,bossDir=1;
+function scene(){
+  rr(0,0,360,204,P.out);
+  // wall
+  rr(0,0,360,28,P.wall);rr(0,22,360,6,P.wallSh);rr(0,28,360,3,P.base);
+  // posters
+  rr(38,5,26,15,P.poster);rr(40,7,22,11,P.hair2);rr(138,5,20,15,P.poster);rr(140,7,16,11,P.hair2);
+  // floor herringbone
+  for(let ty=0;ty<15;ty++)for(let tx=0;tx<30;tx++){
+    const x=tx*12,y=31+ty*12,v=(tx+ty)%2==0;
+    rr(x,y,12,12,v?P.fA:P.fB);
+    if(v){for(let i=2;i<12;i+=4)rr(x+i,y,1,12,P.fAl)}
+    else{for(let i=2;i<12;i+=4)rr(x,y+i,12,1,P.fBl)}
+  }
+  // coffee machine (top right)
+  rr(300,4,44,44,P.out);rr(302,6,40,40,P.crtD);rr(304,8,26,36,P.crt);
+  rr(332,8,8,36,P.out);for(let i=0;i<4;i++)rr(333,10+i*8,6,4,P.crtD);
+  rr(308,26,18,14,P.out);rr(313,30,8,7,P.cup);rr(314,28,6,2,P.cup);
+  const busy=state.agents.length>0;
+  if(busy){const f=frame%4;rr(316,20-f*3,2,2,P.steam);rr(319,16-((frame+2)%4)*3,2,2,P.steam)}
+}
+function desk(cx,y,a,key){
+  const on=!!a;
+  // CRT (back view)
+  const crtc=on?P.crt:P.crtD;
+  rr(cx-14,y,28,17,P.out);rr(cx-13,y+1,26,15,crtc);
+  rr(cx-11,y+3,22,2,on?P.glow2:P.crtD);for(let i=0;i<3;i++)rr(cx-9+i*7,y+7,4,1,P.out);
+  if(on){const g=(frame%2==0)?P.glow:P.glow2;
+    rr(cx-14,y-1,28,1,g);rr(cx-15,y,1,16,g);rr(cx+14,y,1,16,g)}
+  // desk slab
+  rr(cx-26,y+17,52,11,P.out);rr(cx-25,y+18,50,9,P.desk);rr(cx-25,y+25,50,2,P.deskSh);
+  rr(cx+15,y+19,8,6,P.deskSh); // papers
+  if(on){
+    // keyboard + hands
+    rr(cx-8,y+22,16,3,P.out);const off=(frame%2==0)?0:1;
+    rr(cx-10,y+22+off,3,2,P.skin);rr(cx+7,y+23-off,3,2,P.skin);
+    // worker: head over slab bottom, torso, chair
+    rr(cx-11,y+27,22,10,P.out);rr(cx-10,y+28,20,8,SHIRTS[key]);
+    rr(cx-6,y+19,12,11,P.out);rr(cx-5,y+20,10,9,P.skin);rr(cx-5,y+20,10,4,HAIRS[key]);
+    rr(cx-8,y+36,16,7,P.out);rr(cx-7,y+37,14,5,P.chair);
+    // speech bubble with typing dots
+    const dots=frame%3+1;
+    rr(cx+18,y-9,20,11,P.out);rr(cx+19,y-8,18,9,P.cream);rr(cx+18,y+2,3,3,P.cream);
+    for(let i=0;i<dots;i++)rr(cx+22+i*5,y-5,2,2,P.out);
+  }else{
+    // empty chair
+    rr(cx-8,y+30,16,8,P.out);rr(cx-7,y+31,14,6,P.chair);
+  }
+}
+function boss(){
+  if(state.agents.length==0)return;
+  bossX+=bossDir*1;if(bossX>290)bossDir=-1;if(bossX<46)bossDir=1;
+  const x=Math.round(bossX),y=88;
+  rr(x-4,y,8,20,P.out);
+  rr(x-3,y+1,6,5,P.skin);rr(x-3,y+1,6,2,P.hair);
+  rr(x-4,y+6,8,9,P.suit);rr(x-1,y+6,2,4,P.cream);
+  const st=(frame%2==0)?1:0;
+  rr(x-3,y+15,3,4+st,P.suit);rr(x+1,y+15,3,5-st,P.suit);
+}
+function draw(){
+  scene();
+  for(const s of SLOTS){const a=state.agents.find(x=>x.agent==s.k);desk(s.x,s.y,a,s.k)}
+  boss();
+}
 function fmt(e){if(e<60)return e+"s";if(e<3600)return Math.floor(e/60)+"m"+String(e%60).padStart(2,"0")+"s";
 return Math.floor(e/3600)+"h"+String(Math.floor(e%3600/60)).padStart(2,"0")+"m"}
-let last={agents:[],recent:[],roster:[],now:0},drift=0;
-function render(){
+function esc(s){const d=document.createElement("span");d.textContent=s||"";return d.innerHTML}
+function list(){
   const now=Math.floor(Date.now()/1000)-drift;
-  const floors=document.getElementById("floors");floors.innerHTML="";
-  const bosses=[...new Set(last.agents.map(a=>a.boss||0))];
-  const groups=bosses.length? bosses:[0];
-  document.getElementById("sub").textContent=
-    last.agents.length+" agent"+(last.agents.length!=1?"s":"")+" au travail · "+groups.filter(b=>last.agents.some(a=>(a.boss||0)==b)).length+" session(s) · maj live";
-  const showHdr=bosses.length>1;
-  for(const b of groups){
-    if(showHdr){const h=el("div");h.className="sess";h.textContent="SESSION "+b;floors.appendChild(h)}
-    const grid=el("div");grid.className="floor";
-    for(const [key,code,name,model] of last.roster){
-      const a=last.agents.find(x=>x.agent==key&&(!showHdr||(x.boss||0)==b));
-      const d=el("div");d.className="desk "+(a?"on":"off");
-      const spr=el("div");spr.className="sprite";spr.innerHTML=a?SPR_ON:SPR_OFF;d.appendChild(spr);
-      const m=el("div");m.className="model";m.textContent=model;d.appendChild(m);
-      const w=el("div");w.className="who";
-      w.innerHTML=`<span class="code">${code}</span><span class="name">${name}</span>`+
-        (a?`<span class="elapsed">${fmt(Math.max(0,now-a.start))}</span>`:`<span class="elapsed zz">zzz</span>`);
-      d.appendChild(w);
-      if(a){const t=el("div");t.className="task";t.textContent=a.task||"";t.title=a.task||"";d.appendChild(t);
-        const ac=el("div");ac.className="act";ac.textContent=a.action||"";ac.title=a.action||"";d.appendChild(ac)}
-      grid.appendChild(d);
+  const bosses=[...new Set(state.agents.map(a=>a.boss||0))];
+  const multi=bosses.length>1;
+  let h="";
+  for(const s of SLOTS){
+    const as=state.agents.filter(x=>x.agent==s.k);
+    if(as.length==0){h+=`<div class="row zz"><span class="code">${CODES[s.k]}</span><span>${NAMES[s.k]}</span><span>zzz</span></div>`;continue}
+    for(const a of as){
+      h+=`<div class="row"><span class="code">${CODES[s.k]}</span>`+
+         `<span class="t">${fmt(Math.max(0,now-a.start))}</span>`+
+         (multi?`<span class="sess">[${a.boss||"?"}]</span>`:"")+
+         `<span class="task">${esc(a.task)}</span><span class="act">${esc(a.action)}</span></div>`;
     }
-    floors.appendChild(grid);
-    if(!showHdr)break;
   }
-  const runs=document.getElementById("runs");runs.innerHTML="";
-  for(const r of last.recent){
-    const d=el("div");d.className="run";
-    d.innerHTML=`<span class="${r.exit==0?"ok":"err"}">${r.exit==0?"✓":"✗"}</span>`+
-      `<span class="a">${r.agent}</span><span class="p">${(r.prompt_head||"").slice(0,110)}</span>`+
-      `<span>${(r.ts||"").slice(11,19)}</span>`;
-    runs.appendChild(d);
+  document.getElementById("list").innerHTML=h;
+  document.getElementById("sub").textContent=
+    state.agents.length+" agent"+(state.agents.length!=1?"s":"")+" au travail · "+
+    (bosses.filter(b=>state.agents.some(a=>(a.boss||0)==b)).length||0)+" session(s)";
+  let r="";
+  for(const x of state.recent){
+    r+=`<div class="run"><span class="${x.exit==0?"ok":"err"}">${x.exit==0?"✓":"✗"}</span>`+
+       `<span class="a">${esc(x.agent)}</span><span class="p">${esc((x.prompt_head||"").slice(0,110))}</span>`+
+       `<span>${esc((x.ts||"").slice(11,19))}</span></div>`;
   }
+  document.getElementById("runs").innerHTML=r;
 }
-async function poll(){
-  try{const r=await fetch("/api/state");last=await r.json();
-    drift=Math.floor(Date.now()/1000)-last.now;}catch(e){}
-  render();
-}
-poll();setInterval(poll,1500);setInterval(render,1000);
+async function poll(){try{const r=await fetch("/api/state");state=await r.json();
+  drift=Math.floor(Date.now()/1000)-state.now;}catch(e){}list()}
+setInterval(()=>{frame++;draw()},400);
+setInterval(list,1000);
+poll();setInterval(poll,1500);draw();
 </script></body></html>"""
 
 class H(BaseHTTPRequestHandler):
