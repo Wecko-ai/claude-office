@@ -118,14 +118,27 @@ esac
 # JSON-escape helper (quotes + backslashes) for embedding in the state file
 json_esc() { print -r -- "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' '; }
 
+# Find the claude process that owns this spawn (walk up the process tree). The
+# statusline does the same walk and only shows agents whose boss matches its own
+# session, so agents stop leaking into every Claude Code session's statusline.
+boss_pid=0
+_p=$$
+for _ in {1..10}; do
+  _p="$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ')"
+  [[ -z "$_p" || "$_p" -le 1 ]] && break
+  case "$(ps -o comm= -p "$_p" 2>/dev/null)" in
+    *claude*) boss_pid=$_p; break ;;
+  esac
+done
+
 # Write liveness state file so the statusline can render this agent live.
 # Fields: task = boss summary, action = live current tool/text (updated below).
 STATE_FILE="$ACTIVE_DIR/${canonical_key}-$$.json"
 task_esc="$(json_esc "$task_summary" | head -c 90)"
 write_state() {
   local action_esc; action_esc="$(json_esc "$1" | head -c 100)"
-  printf '{"agent":"%s","model":"%s","pid":%d,"start":%d,"task":"%s","action":"%s","updated":%d}\n' \
-    "$canonical_key" "$model" "$$" "$start_epoch" "$task_esc" "$action_esc" "$(date +%s)" \
+  printf '{"agent":"%s","model":"%s","pid":%d,"boss":%d,"start":%d,"task":"%s","action":"%s","updated":%d}\n' \
+    "$canonical_key" "$model" "$$" "$boss_pid" "$start_epoch" "$task_esc" "$action_esc" "$(date +%s)" \
     > "$STATE_FILE.tmp" && mv -f "$STATE_FILE.tmp" "$STATE_FILE"
 }
 write_state "starting"
