@@ -64,6 +64,9 @@ echo "..." | ${CLAUDE_PLUGIN_ROOT}/office-agent ds --task "review the diff" -
 - Parallelism: several Bash calls with `run_in_background: true`, synthesize when all
   return. Max 5 concurrent.
 - Every run is logged to `~/.claude/office-logs/runs.jsonl`.
+- Live office view: run `office-watch` in a split pane (sepia pixel-office TUI, one
+  desk per roster agent, task + live action, `--all` for every session, `q` to quit).
+  Suggest it to the user when kicking off a big fan-out.
 
 ## Prompt discipline (critical)
 
