@@ -23,8 +23,8 @@ the top of `office-agent` — edit it.
 ```bash
 git clone https://github.com/Wecko-ai/claude-office.git /tmp/claude-office
 cp -r /tmp/claude-office ~/.claude/skills/office
-cp /tmp/claude-office/office-agent /tmp/claude-office/office-watch ~/bin/   # or anywhere on PATH
-chmod +x ~/bin/office-agent ~/bin/office-watch
+cp /tmp/claude-office/office-agent /tmp/claude-office/office-watch /tmp/claude-office/office-hq ~/bin/   # or anywhere on PATH
+chmod +x ~/bin/office-agent ~/bin/office-watch ~/bin/office-hq
 ```
 
 ## 2. Configure the proxy
@@ -103,11 +103,12 @@ bolt it onto.
 ## 6. Live office view (optional)
 
 ```bash
-office-watch        # your session's agents at their desks, live
+office-hq --daemon  # web dashboard at http://localhost:4545 (the skill auto-starts it)
+office-watch        # same as a terminal TUI, your session's agents only
 office-watch --all  # every session on the machine
 ```
 
-Run it in a split pane next to Claude Code. `q` quits.
+`office-hq --stop` stops the dashboard. `q` quits the TUI.
 
 ## 7. Activate
 

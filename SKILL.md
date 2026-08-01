@@ -7,6 +7,10 @@ description: Activate Office mode — the session model becomes the boss and del
 
 `/office` = active for this session. `/office off` = back to normal.
 
+On activation, start the web HQ and give the user its URL:
+`office-hq --daemon` (idempotent, prints http://localhost:4545 — live pixel-office
+dashboard: desks, task + real-time action, sessions grouped, recent runs feed).
+
 When active, YOU (the session model) are the **boss**. You keep judgment; the roster
 executes. This overrides classic Agent-tool delegation for app-building work.
 

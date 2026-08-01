@@ -50,8 +50,12 @@ Then `/office` in any Claude Code session.
 
 ## Live office view
 
-`office-watch` in a split pane renders your agents at their desks — sepia pixel-office
-TUI, one desk per agent, task + live action, screens blinking while they type.
+Two ways to watch the agents work:
+
+- **`office-hq`** — localhost dashboard (auto-started by `/office`, or `office-hq --daemon`):
+  http://localhost:4545 shows every desk with task + real-time action, sessions grouped,
+  and the recent runs feed. Zero dependencies, stdlib only. `office-hq --stop` kills it.
+- **`office-watch`** — same thing as a terminal TUI for a split pane.
 
 ## Requirements
 

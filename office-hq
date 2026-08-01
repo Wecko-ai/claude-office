@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""office-hq — localhost dashboard for /office agents.
+
+Serves a sepia pixel-office page showing every running agent (desk, task, live
+action, elapsed) plus the recent runs feed. Reads the same state files as the
+statusline and office-watch: ~/.claude/office-logs/active/*.json + runs.jsonl.
+
+Usage:  office-hq [--port 4545]        (foreground)
+        office-hq --daemon             (background, prints URL, exits)
+Stop:   office-hq --stop
+The /office skill starts it automatically when the mode is activated.
+"""
+
+import json, os, sys, time, glob, subprocess, signal, socket
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 4545
+LOG_DIR = os.path.expanduser("~/.claude/office-logs")
+ACTIVE_DIR = os.path.join(LOG_DIR, "active")
+RUNS = os.path.join(LOG_DIR, "runs.jsonl")
+PIDFILE = os.path.join(LOG_DIR, "office-hq.pid")
+
+ROSTER = [
+    ("lead",  "tnk", "Tanaka", "qwen3.8-max-preview"),
+    ("ds",    "suz", "Suzuki", "deepseek-v4-flash-0731"),
+    ("glm",   "ken", "Kenji",  "glm-5.2"),
+    ("k2",    "yuk", "Yuki",   "kimi-for-coding"),
+    ("flash", "hay", "Hayate", "qwen3.6-flash"),
+]
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0); return True
+    except Exception:
+        return False
+
+def claude_ancestor(pid):
+    p = pid
+    for _ in range(10):
+        try:
+            out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(p)],
+                                 capture_output=True, text=True, timeout=2).stdout.strip()
+            if not out: return 0
+            ppid_s, _, comm = out.partition(" ")
+            p = int(ppid_s.strip())
+        except Exception:
+            return 0
+        if p <= 1: return 0
+        if "claude" in comm.strip().rsplit("/", 1)[-1]: return p
+    return 0
+
+def state():
+    agents = []
+    for f in glob.glob(os.path.join(ACTIVE_DIR, "*.json")):
+        try: d = json.load(open(f))
+        except Exception: continue
+        pid = int(d.get("pid") or 0)
+        if not pid or not pid_alive(pid): continue
+        d["boss"] = int(d.get("boss") or 0) or claude_ancestor(pid)
+        agents.append(d)
+    recent = []
+    try:
+        lines = open(RUNS).readlines()[-12:]
+        for ln in reversed(lines):
+            try: recent.append(json.loads(ln))
+            except Exception: pass
+    except Exception:
+        pass
+    return {"agents": agents, "recent": recent, "roster": ROSTER, "now": int(time.time())}
+
+PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>OFFICE HQ</title>
+<style>
+:root{--bg:#191510;--panel:#221c14;--line:#3a3226;--tan:#a8875a;--cream:#e8d5a3;
+--glow:#f5e9c0;--dim:#6b5d45;--mag:#c586b6;--cyan:#7fb8c9;--ok:#8aa86b;--err:#c96a5a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--cream);font:14px/1.5 "SF Mono",Menlo,monospace;padding:24px}
+h1{font-size:16px;letter-spacing:4px;color:var(--glow);margin-bottom:2px}
+.sub{color:var(--dim);font-size:12px;margin-bottom:22px}
+.floor{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-bottom:28px}
+.desk{background:var(--panel);border:2px solid var(--line);border-radius:4px;padding:14px;position:relative;
+image-rendering:pixelated;min-height:150px}
+.desk.on{border-color:var(--tan)}
+.desk .sprite{font-size:15px;line-height:1.15;white-space:pre;color:var(--tan);margin-bottom:8px}
+.desk.on .sprite .scr{color:var(--glow);animation:flick 1.2s steps(2) infinite}
+.desk.off{opacity:.45}
+@keyframes flick{50%{color:var(--cream)}}
+.who{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
+.code{color:var(--mag);font-weight:700}.name{color:var(--dim)}.elapsed{color:var(--cyan);margin-left:auto}
+.task{color:var(--cream);font-size:13px;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act{color:var(--tan);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act:before{content:"› ";color:var(--dim)}
+.model{position:absolute;top:10px;right:12px;color:var(--dim);font-size:10px}
+.sess{color:var(--dim);font-size:11px;margin:16px 0 8px;letter-spacing:1px}
+h2{font-size:12px;letter-spacing:3px;color:var(--tan);margin:26px 0 10px}
+.run{display:flex;gap:10px;padding:6px 10px;border-left:2px solid var(--line);margin-bottom:4px;font-size:12px;color:var(--dim)}
+.run .ok{color:var(--ok)}.run .err{color:var(--err)}
+.run .a{color:var(--mag);min-width:44px}.run .p{color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.zz{color:var(--dim)}
+</style></head><body>
+<h1>OFFICE HQ</h1><div class="sub" id="sub">…</div>
+<div id="floors"></div>
+<h2>RECENT RUNS</h2><div id="runs"></div>
+<script>
+const SPR_ON=`┌─<span class="scr">▓▓▓▓</span>─┐\\n│  ◉◉  │\\n└┬─▄▖▄─┬┘`;
+const SPR_OFF=`┌─▒▒▒▒─┐\\n│      │\\n└┬────┬┘`;
+function el(s){return document.createElement(s)}
+function fmt(e){if(e<60)return e+"s";if(e<3600)return Math.floor(e/60)+"m"+String(e%60).padStart(2,"0")+"s";
+return Math.floor(e/3600)+"h"+String(Math.floor(e%3600/60)).padStart(2,"0")+"m"}
+let last={agents:[],recent:[],roster:[],now:0},drift=0;
+function render(){
+  const now=Math.floor(Date.now()/1000)-drift;
+  const floors=document.getElementById("floors");floors.innerHTML="";
+  const bosses=[...new Set(last.agents.map(a=>a.boss||0))];
+  const groups=bosses.length? bosses:[0];
+  document.getElementById("sub").textContent=
+    last.agents.length+" agent"+(last.agents.length!=1?"s":"")+" au travail · "+groups.filter(b=>last.agents.some(a=>(a.boss||0)==b)).length+" session(s) · maj live";
+  const showHdr=bosses.length>1;
+  for(const b of groups){
+    if(showHdr){const h=el("div");h.className="sess";h.textContent="SESSION "+b;floors.appendChild(h)}
+    const grid=el("div");grid.className="floor";
+    for(const [key,code,name,model] of last.roster){
+      const a=last.agents.find(x=>x.agent==key&&(!showHdr||(x.boss||0)==b));
+      const d=el("div");d.className="desk "+(a?"on":"off");
+      const spr=el("div");spr.className="sprite";spr.innerHTML=a?SPR_ON:SPR_OFF;d.appendChild(spr);
+      const m=el("div");m.className="model";m.textContent=model;d.appendChild(m);
+      const w=el("div");w.className="who";
+      w.innerHTML=`<span class="code">${code}</span><span class="name">${name}</span>`+
+        (a?`<span class="elapsed">${fmt(Math.max(0,now-a.start))}</span>`:`<span class="elapsed zz">zzz</span>`);
+      d.appendChild(w);
+      if(a){const t=el("div");t.className="task";t.textContent=a.task||"";t.title=a.task||"";d.appendChild(t);
+        const ac=el("div");ac.className="act";ac.textContent=a.action||"";ac.title=a.action||"";d.appendChild(ac)}
+      grid.appendChild(d);
+    }
+    floors.appendChild(grid);
+    if(!showHdr)break;
+  }
+  const runs=document.getElementById("runs");runs.innerHTML="";
+  for(const r of last.recent){
+    const d=el("div");d.className="run";
+    d.innerHTML=`<span class="${r.exit==0?"ok":"err"}">${r.exit==0?"✓":"✗"}</span>`+
+      `<span class="a">${r.agent}</span><span class="p">${(r.prompt_head||"").slice(0,110)}</span>`+
+      `<span>${(r.ts||"").slice(11,19)}</span>`;
+    runs.appendChild(d);
+  }
+}
+async function poll(){
+  try{const r=await fetch("/api/state");last=await r.json();
+    drift=Math.floor(Date.now()/1000)-last.now;}catch(e){}
+  render();
+}
+poll();setInterval(poll,1500);setInterval(render,1000);
+</script></body></html>"""
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        if self.path.startswith("/api/state"):
+            body = json.dumps(state()).encode()
+            ct = "application/json"
+        elif self.path == "/health":
+            body, ct = b"ok", "text/plain"
+        else:
+            body, ct = PAGE.encode(), "text/html; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+def main():
+    if "--stop" in sys.argv:
+        try:
+            pid = int(open(PIDFILE).read().strip())
+            os.kill(pid, signal.SIGTERM)
+            print(f"office-hq: stopped (pid {pid})")
+        except Exception:
+            print("office-hq: not running")
+        return
+    # already up?
+    try:
+        s = socket.create_connection(("127.0.0.1", PORT), timeout=1); s.close()
+        print(f"office-hq: already running — http://localhost:{PORT}")
+        return
+    except Exception:
+        pass
+    if "--daemon" in sys.argv:
+        args = [a for a in sys.argv[1:] if a != "--daemon"]
+        subprocess.Popen([sys.executable, os.path.abspath(__file__)] + args,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        print(f"office-hq: http://localhost:{PORT}")
+        return
+    os.makedirs(LOG_DIR, exist_ok=True)
+    open(PIDFILE, "w").write(str(os.getpid()))
+    srv = HTTPServer(("127.0.0.1", PORT), H)
+    try:
+        srv.serve_forever()
+    finally:
+        try: os.remove(PIDFILE)
+        except Exception: pass
+
+if __name__ == "__main__":
+    main()
