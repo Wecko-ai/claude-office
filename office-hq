@@ -110,11 +110,11 @@ for(const n of ["room","spr_typing","spr_sleep","spr_typing_b","spr_coffee","spr
 }
 // slots: worker anchor = (cx = sprite center x, fy = sprite bottom y)
 const SLOTS=[
- {k:"lead", cx:290, fy:868,  flip:false, typ:"spr_typing",  slp:"spr_sleep"},
- {k:"ds",   cx:640, fy:868,  flip:true,  typ:"spr_typing_b",slp:"spr_sleep"},
- {k:"glm",  cx:290, fy:1580, flip:false, typ:"spr_typing_b",slp:"spr_sleep"},
- {k:"k2",   cx:640, fy:1580, flip:true,  typ:"spr_typing",  slp:"spr_sleep"},
- {k:"flash",cx:1445,fy:1580, flip:false, typ:"spr_typing",  slp:"spr_sleep"}
+ {k:"lead", cx:290, fy:882,  flip:false, typ:"spr_typing",  slp:"spr_sleep"},
+ {k:"ds",   cx:640, fy:882,  flip:true,  typ:"spr_typing_b",slp:"spr_sleep"},
+ {k:"glm",  cx:290, fy:1594, flip:false, typ:"spr_typing_b",slp:"spr_sleep"},
+ {k:"k2",   cx:640, fy:1594, flip:true,  typ:"spr_typing",  slp:"spr_sleep"},
+ {k:"flash",cx:1445,fy:1594, flip:false, typ:"spr_typing",  slp:"spr_sleep"}
 ];
 // screen rects [x,y,w,h] are re-measured below; scr coords set after first render pass
 const SCREENS={lead:[196,310,270,200],ds:[900,310,270,200],glm:[212,1190,265,195],k2:[1035,1190,265,195],flash:[2000,0,0,0]};
@@ -150,7 +150,7 @@ function draw(){
       const dy=(frame%4<2)?0:4;
       const im=pick(s.slp);
       blit(im,s.cx,s.fy+dy,s.flip);
-      zzz(s.cx+(s.flip?-58:22),s.fy-im.height-4);
+      zzz(s.cx+im.width/2+12,s.fy-im.height+52);
     }
   }
   // boss paces while the office works
@@ -203,11 +203,17 @@ function bubble(cx,headTop){
   const dots=frame%3+1;ctx.fillStyle="#241c12";
   for(let i=0;i<dots;i++)ctx.fillRect(x+12+i*18,y+14,9,9);
 }
+function zGlyph(x,y,s){
+  ctx.fillStyle="#241c12";ctx.fillRect(x-2,y-2,s*5+4,s*7+4);
+  ctx.fillStyle="#f2e4b6";
+  ctx.fillRect(x,y,s*5,s);ctx.fillRect(x,y+s*6,s*5,s);
+  ctx.fillRect(x+s*3,y+s,s,s);ctx.fillRect(x+s*2,y+s*2,s,s*2);
+  ctx.fillRect(x+s,y+s*4,s,s*2);
+}
 function zzz(x,y){
-  ctx.fillStyle="#e3cf9c";ctx.font="900 38px Menlo,monospace";
   const ph=frame%3;
-  ctx.fillText("z",x+ph*10,y-ph*26);
-  if(ph>0)ctx.fillText("Z",x+34+ph*8,y-40-ph*20);
+  zGlyph(x,y-44-ph*8,4);
+  if(ph>0)zGlyph(x+30,y-84-ph*8,5);
 }
 function fmt(e){if(e<60)return e+"s";if(e<3600)return Math.floor(e/60)+"m"+String(e%60).padStart(2,"0")+"s";
 return Math.floor(e/3600)+"h"+String(Math.floor(e%3600/60)).padStart(2,"0")+"m"}
