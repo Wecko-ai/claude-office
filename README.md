@@ -1,5 +1,14 @@
 # claude-office
 
+> **Moved to [Wecko-ai/skills](https://github.com/Wecko-ai/skills).** This skill now lives in [`skills/engineering/office`](https://github.com/Wecko-ai/skills/tree/main/skills/engineering/office), with the rest of my skills. Install:
+>
+> ```bash
+> claude plugin marketplace add Wecko-ai/skills
+> claude plugin install wecko-engineering@wecko-ai
+> ```
+>
+> This repo stays installable but gets no new versions.
+
 ![Office mode — pixel art cover](assets/office.gif)
 
 **Office mode for Claude Code**: your session model stays the **boss** (judgment, planning, final review) and delegates execution to a roster of headless agents running under *other* models — with cross-model-family review, so a model never grades its own biases.
